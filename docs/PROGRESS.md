@@ -1,5 +1,23 @@
 # Progress
 
+## Phase 143 (Tasks page now defaults to schedule and cron execution) — Completed
+- Scope:
+  - Stop making the tasks page look empty or contradictory when staff are active through cron/ad-hoc sessions but there are no tracked task rows.
+  - Make schedule and cron execution the primary view, with tracked-task boards demoted behind a secondary foldout.
+- Changed files:
+  - `src/ui/server.ts`
+  - `test/ui-render-smoke.test.ts`
+  - `docs/PROGRESS.md`
+- Implementation:
+  - Reframed the tasks-page lead copy so it explains that staff activity can come from cron or ad-hoc runtime sessions before anything lands in the tracked task store.
+  - Promoted `Today and next schedule` and `Cron execution board` to the always-visible primary view.
+  - Moved tracked tasks, follow-up items, execution chains, project lanes, live feed, and raw tables behind a `Tracked tasks and follow-up` detail block.
+  - Updated current-task navigation anchors so overview and readiness links land on the new tracked-task summary instead of the old lane anchor.
+- Verification:
+  - `npm run build`
+  - `npm test`
+  - `npm run smoke:ui`
+
 ## Phase 142 (Documents workbench now includes identity and soul markdown files) — Completed
 - Scope:
   - Fix the document workbench so Main and active agents expose their `IDENTITY.md` and `SOUL.md` files instead of hiding them behind an overly narrow core-doc whitelist.

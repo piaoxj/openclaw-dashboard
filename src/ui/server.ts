@@ -1962,7 +1962,7 @@ function buildGlobalVisibilityDetailHref(taskType: GlobalVisibilityTaskRow["task
     return `${buildHomeHref({ quick: "all" }, true, "overview", language)}#heartbeat-health`;
   }
   if (taskType === "current_task") {
-    return `${buildHomeHref({ quick: "all" }, true, "projects-tasks", language)}#task-lane`;
+    return `${buildHomeHref({ quick: "all" }, true, "projects-tasks", language)}#tracked-task-view`;
   }
   return `${buildHomeHref({ quick: "all" }, true, "overview", language)}#tool-activity`;
 }
@@ -3473,8 +3473,8 @@ async function renderHtml(
         )
       : activeSection === "projects-tasks"
         ? t(
-            "One task hub for schedule, review queue, runtime evidence, and cron execution.",
-            "一个任务中枢，把排程、审阅队列、运行证据和 Cron 执行放在同一页。",
+            "Start with schedule and cron execution. Staff can be active from cron or ad-hoc sessions even when there is no tracked task row yet.",
+            "先看排程和 Cron 执行。员工显示在工作，可能只是 Cron 或临时会话在跑，不一定已经落成可跟踪的任务条目。",
           )
         : sectionMeta.blurb;
   const needsSessionPreview = activeSection === "projects-tasks" || activeSection === "overview";
@@ -3640,8 +3640,8 @@ async function renderHtml(
     `${t("Runtime issues", "运行异常")} ${runtimeIssueCount}`,
     `${t("Budget risks", "预算风险")} ${budgetRiskCount}`,
   ].join(" · ");
-  const focusHref = `${buildHomeHref({ quick: "all" }, options.compactStatusStrip, "projects-tasks", options.language, options.usageView)}#task-decision-center`;
-  const currentTaskHealthHref = `${buildHomeHref({ quick: "all" }, true, "projects-tasks", options.language, options.usageView)}#task-lane`;
+  const focusHref = `${buildHomeHref({ quick: "all" }, options.compactStatusStrip, "projects-tasks", options.language, options.usageView)}#tracked-task-view`;
+  const currentTaskHealthHref = `${buildHomeHref({ quick: "all" }, true, "projects-tasks", options.language, options.usageView)}#tracked-task-view`;
   const runtimeCronById = new Map(cronOverview.jobs.map((job) => [job.jobId, job]));
   const catalogMatchedRuntimeIds = new Set<string>();
   const catalogCronRows = openclawCronJobs.map((job) => {
@@ -4932,128 +4932,162 @@ async function renderHtml(
     </details>
   `;
   const teamUnifiedSection = teamSection;
+  const hasTrackedTaskPanels = tasks.length > 0 || pendingDecisionCount > 0 || taskCertaintyCards.length > 0;
+  const trackedTaskDetailsOpen = pendingDecisionCount > 0 || taskCertaintyCards.length > 0;
+  const trackedTaskSummaryText = hasTrackedTaskPanels
+    ? t(
+        `Tracked tasks ${taskCertaintyCards.length} · Follow-up ${pendingDecisionCount}`,
+        `跟踪任务 ${taskCertaintyCards.length} · 待处理 ${pendingDecisionCount}`,
+      )
+    : t("No tracked task rows yet", "还没有跟踪任务条目");
+  const trackedTaskExplanation = hasTrackedTaskPanels
+    ? t(
+        "This lower-priority area is only for tracked task rows, decisions, and runtime evidence.",
+        "这块低优先级区域只看可跟踪任务条目、待处理事项和运行证据。",
+      )
+    : liveSessionCount > 0
+      ? t(
+          "Staff status comes from live sessions. Cron jobs, heartbeat, and ad-hoc sessions can keep agents busy before anything becomes a tracked task row.",
+          "员工状态来自实时会话。Cron、心跳和临时会话可能已经让智能体在工作，但还没有形成可跟踪的任务条目。",
+        )
+      : t(
+          "There is no tracked task row visible right now. Start here only when you actually use the task store.",
+          "当前还没有可见的跟踪任务条目。只有真正使用任务库时，这里才会出现内容。",
+        );
+  const trackedTaskDetailsBody = hasTrackedTaskPanels
+    ? `
+      <section class="task-hub-shell" id="task-hub">
+        <article class="card task-hub-primary" id="task-hub-primary">
+          <div class="overview-command-head">
+            <div>
+              <h2>${escapeHtml(t("Task hub", "任务中枢"))}</h2>
+              <div class="meta">${escapeHtml(t("One place for tracked tasks, follow-up items, and runtime evidence.", "把可跟踪任务、待处理事项和运行证据放在一起。"))}</div>
+            </div>
+            <div>${overviewPrimaryStatus}</div>
+          </div>
+          ${taskHubStatCardsHtml}
+          <div class="overview-task-strip">
+            <div>
+              <div class="meta">${escapeHtml(t("Current focus", "当前关注"))}</div>
+              <div class="overview-task-metric">${badge(currentTaskHealth)} ${escapeHtml(t("Confirmed live", "已确认在跑"))} ${taskCertaintyStrongCount} · ${escapeHtml(t("Need follow-up", "需跟进"))} ${taskCertaintyFollowupCount} · ${escapeHtml(t("Needs inspection", "需排查"))} ${taskCertaintyWeakCount}</div>
+              ${mappingTaskHint ? `<div class="meta">${escapeHtml(mappingTaskHint)}</div>` : ""}
+            </div>
+            <div class="overview-quick-links">
+              <a class="btn" href="${escapeHtml(currentTaskHealthHref)}">${escapeHtml(t("Open tracked tasks", "查看跟踪任务"))}</a>
+              <a class="btn" href="${escapeHtml(focusHref)}">${escapeHtml(t("Open follow-up items", "查看待处理"))}</a>
+            </div>
+          </div>
+        </article>
+        <article class="card" id="task-decision-center">
+          <div class="overview-command-head">
+            <h2>${escapeHtml(t("Waiting for your decision", "等待你决策"))}</h2>
+            <div>${badge(pendingDecisionCount > 0 ? "warn" : "ok", pendingDecisionCount > 0 ? t("Queue active", "队列活跃") : t("Clear", "已清空"))}</div>
+          </div>
+          <div class="meta">${escapeHtml(t("Pending decisions", "待处理事项"))} ${pendingDecisionCount} · ${escapeHtml(t("Approvals", "审批"))} ${pendingApprovalsCount} · ${escapeHtml(t("Unacked alerts", "未确认告警"))} ${actionQueue.counts.unacked}</div>
+          ${taskDecisionPreviewHtml}
+        </article>
+      </section>
+      ${taskExecutionChainSection}
+      <section class="task-hub-grid task-hub-board-grid">
+        <section class="card" id="task-lane">
+          <h2>${escapeHtml(t("Task lanes", "任务泳道"))}</h2>
+          <div class="meta">${escapeHtml(t("Current focus", "当前关注"))}：${escapeHtml(quickFilterLabel(effectiveQuick, options.language))}</div>
+          ${
+            controlCenterMappingTasks.length > 0
+              ? `<div class="meta">${escapeHtml(t(`${controlCenterMappingTasks.length} board-only mapping examples are hidden because they are not real execution tasks.`, `已隐藏 ${controlCenterMappingTasks.length} 个看板映射样例（非真实执行任务）。`))}</div>`
+              : ""
+          }
+          <div class="quick-filters">${quickFilters}</div>
+          <form method="GET" action="/" class="filters">
+            <input type="hidden" name="section" value="${escapeHtml(options.section)}" />
+            <input type="hidden" name="lang" value="${escapeHtml(options.language)}" />
+            <input type="hidden" name="quick" value="${escapeHtml(effectiveQuick)}" />
+            <input type="hidden" name="compact" value="${options.compactStatusStrip ? "1" : "0"}" />
+            <input type="hidden" name="usage_view" value="${options.usageView === "today" ? "today" : "cumulative"}" />
+            <div>
+              <label for="status">${escapeHtml(t("Status", "状态"))}</label>
+              <select id="status" name="status">
+                ${renderSelectOptions(
+                  [{ value: "", label: t("All", "全部") }, ...TASK_STATES.map((state) => ({ value: state, label: taskStateLabel(state, options.language) }))],
+                  filters.status ?? "",
+                )}
+              </select>
+            </div>
+            <div>
+              <label for="owner">${escapeHtml(t("Agent", "智能体"))}</label>
+              <select id="owner" name="owner">
+                ${renderSelectOptions(
+                  [{ value: "", label: t("All", "全部") }, ...ownerOptions.map((owner) => ({ value: owner, label: owner }))],
+                  filters.owner ?? "",
+                )}
+              </select>
+            </div>
+            <div>
+              <label for="project">${escapeHtml(t("Project", "项目"))}</label>
+              <select id="project" name="project">
+                ${renderSelectOptions(
+                  [{ value: "", label: t("All", "全部") }, ...projectOptions.map((project) => ({ value: project, label: project }))],
+                  filters.project ?? "",
+                )}
+              </select>
+            </div>
+            <div class="filter-actions">
+              <button class="btn" type="submit">${escapeHtml(t("Apply", "应用"))}</button>
+              <a href="${escapeHtml(clearHref)}">${escapeHtml(t("Clear filters", "清空筛选"))}</a>
+            </div>
+          </form>
+          ${taskBoard}
+          <div style="height:10px;"></div>
+          <h3 style="margin:0 0 6px 0;">${escapeHtml(t("Task groups (native view)", "任务分组列表（原生视图）"))}</h3>
+          ${taskGroupedListHtml}
+          ${
+            controlCenterMappingTasks.length === 0
+              ? ""
+              : `<details class="compact-table-details" style="margin-top:12px;" open>
+                   <summary>${escapeHtml(t("Open board mapping examples (non-executing)", "查看看板映射样例（不执行任务）"))}</summary>
+                   <div class="fold-body">
+                     <table>
+                       <thead><tr><th>${escapeHtml(t("Example task", "样例任务"))}</th><th>${escapeHtml(t("Label", "标签"))}</th><th>${escapeHtml(t("Status", "状态"))}</th></tr></thead>
+                       <tbody>${mappingTaskRows}</tbody>
+                     </table>
+                   </div>
+                 </details>`
+          }
+        </section>
+        <div class="task-hub-sidebar">
+          <section class="card" id="project-lane">
+            <h2>${escapeHtml(t("Project lanes", "项目泳道"))}</h2>
+            ${projectBoard}
+          </section>
+          <section class="card" id="task-live-feed">
+            <h2>${escapeHtml(t("Live activity feed", "实时活动流"))}</h2>
+            <div class="meta">${escapeHtml(t("Use this to confirm what OpenClaw and its sub-agents are doing right now.", "用于确认 OpenClaw 与子智能体当前正在执行什么。"))}</div>
+            <ul class="story-list">${replayMomentsRows}</ul>
+          </section>
+        </div>
+      </section>
+      <details class="card compact-details" id="task-table">
+        <summary>${escapeHtml(t(`Task table (raw detail, ${tasks.length}/${allTasks.length})`, `任务表格（原始明细，${tasks.length}/${allTasks.length}）`))}</summary>
+        <div class="fold-body">
+          <table>
+            <thead><tr><th>${escapeHtml(t("Project", "项目"))}</th><th>${escapeHtml(t("Task", "任务"))}</th><th>${escapeHtml(t("Title", "标题"))}</th><th>${escapeHtml(t("Status", "状态"))}</th><th>${escapeHtml(t("Agent", "智能体"))}</th><th>${escapeHtml(t("Due", "截止"))}</th><th>${escapeHtml(t("Updated", "更新时间"))}</th></tr></thead>
+            <tbody>${taskRows}</tbody>
+          </table>
+        </div>
+      </details>
+    `
+    : `<div class="meta">${escapeHtml(trackedTaskExplanation)}</div>`;
   const projectsSection = `
-    <section class="task-hub-shell" id="task-hub">
-      <article class="card task-hub-primary" id="task-hub-primary">
-        <div class="overview-command-head">
-          <div>
-            <h2>${escapeHtml(t("Task hub", "任务中枢"))}</h2>
-            <div class="meta">${escapeHtml(t("One place for schedule, current tasks, follow-up items, and cron execution.", "把排程、当前任务、待处理事项和 Cron 执行放在同一页。"))}</div>
-          </div>
-          <div>${overviewPrimaryStatus}</div>
-        </div>
-        ${taskHubStatCardsHtml}
-        <div class="overview-task-strip">
-          <div>
-            <div class="meta">${escapeHtml(t("Current focus", "当前关注"))}</div>
-            <div class="overview-task-metric">${badge(currentTaskHealth)} ${escapeHtml(t("Confirmed live", "已确认在跑"))} ${taskCertaintyStrongCount} · ${escapeHtml(t("Need follow-up", "需跟进"))} ${taskCertaintyFollowupCount} · ${escapeHtml(t("Needs inspection", "需排查"))} ${taskCertaintyWeakCount}</div>
-            ${mappingTaskHint ? `<div class="meta">${escapeHtml(mappingTaskHint)}</div>` : ""}
-          </div>
-          <div class="overview-quick-links">
-            <a class="btn" href="${escapeHtml(currentTaskHealthHref)}">${escapeHtml(t("Open task lanes", "查看任务泳道"))}</a>
-            <a class="btn" href="${escapeHtml(focusHref)}">${escapeHtml(t("Open follow-up items", "查看待处理"))}</a>
-          </div>
-        </div>
-      </article>
-      <article class="card" id="task-decision-center">
-        <div class="overview-command-head">
-          <h2>${escapeHtml(t("Waiting for your decision", "等待你决策"))}</h2>
-          <div>${badge(pendingDecisionCount > 0 ? "warn" : "ok", pendingDecisionCount > 0 ? t("Queue active", "队列活跃") : t("Clear", "已清空"))}</div>
-        </div>
-        <div class="meta">${escapeHtml(t("Pending decisions", "待处理事项"))} ${pendingDecisionCount} · ${escapeHtml(t("Approvals", "审批"))} ${pendingApprovalsCount} · ${escapeHtml(t("Unacked alerts", "未确认告警"))} ${actionQueue.counts.unacked}</div>
-        ${taskDecisionPreviewHtml}
-      </article>
-    </section>
-    ${taskExecutionChainSection}
     <section class="task-hub-grid">
       ${calendarSection}
       ${cronExecutionSection}
     </section>
-    <section class="task-hub-grid task-hub-board-grid">
-    <section class="card" id="task-lane">
-      <h2>${escapeHtml(t("Task lanes", "任务泳道"))}</h2>
-      <div class="meta">${escapeHtml(t("Current focus", "当前关注"))}：${escapeHtml(quickFilterLabel(effectiveQuick, options.language))}</div>
-      ${
-        controlCenterMappingTasks.length > 0
-          ? `<div class="meta">${escapeHtml(t(`${controlCenterMappingTasks.length} board-only mapping examples are hidden because they are not real execution tasks.`, `已隐藏 ${controlCenterMappingTasks.length} 个看板映射样例（非真实执行任务）。`))}</div>`
-          : ""
-      }
-      <div class="quick-filters">${quickFilters}</div>
-      <form method="GET" action="/" class="filters">
-        <input type="hidden" name="section" value="${escapeHtml(options.section)}" />
-        <input type="hidden" name="lang" value="${escapeHtml(options.language)}" />
-        <input type="hidden" name="quick" value="${escapeHtml(effectiveQuick)}" />
-        <input type="hidden" name="compact" value="${options.compactStatusStrip ? "1" : "0"}" />
-        <input type="hidden" name="usage_view" value="${options.usageView === "today" ? "today" : "cumulative"}" />
-        <div>
-          <label for="status">${escapeHtml(t("Status", "状态"))}</label>
-          <select id="status" name="status">
-            ${renderSelectOptions(
-              [{ value: "", label: t("All", "全部") }, ...TASK_STATES.map((state) => ({ value: state, label: taskStateLabel(state, options.language) }))],
-              filters.status ?? "",
-            )}
-          </select>
-        </div>
-        <div>
-          <label for="owner">${escapeHtml(t("Agent", "智能体"))}</label>
-          <select id="owner" name="owner">
-            ${renderSelectOptions(
-              [{ value: "", label: t("All", "全部") }, ...ownerOptions.map((owner) => ({ value: owner, label: owner }))],
-              filters.owner ?? "",
-            )}
-          </select>
-        </div>
-        <div>
-          <label for="project">${escapeHtml(t("Project", "项目"))}</label>
-          <select id="project" name="project">
-            ${renderSelectOptions(
-              [{ value: "", label: t("All", "全部") }, ...projectOptions.map((project) => ({ value: project, label: project }))],
-              filters.project ?? "",
-            )}
-          </select>
-        </div>
-        <div class="filter-actions">
-          <button class="btn" type="submit">${escapeHtml(t("Apply", "应用"))}</button>
-          <a href="${escapeHtml(clearHref)}">${escapeHtml(t("Clear filters", "清空筛选"))}</a>
-        </div>
-      </form>
-      ${taskBoard}
-      <div style="height:10px;"></div>
-      <h3 style="margin:0 0 6px 0;">${escapeHtml(t("Task groups (native view)", "任务分组列表（原生视图）"))}</h3>
-      ${taskGroupedListHtml}
-      ${
-        controlCenterMappingTasks.length === 0
-          ? ""
-          : `<details class="compact-table-details" style="margin-top:12px;" open>
-               <summary>${escapeHtml(t("Open board mapping examples (non-executing)", "查看看板映射样例（不执行任务）"))}</summary>
-               <div class="fold-body">
-                 <table>
-                   <thead><tr><th>${escapeHtml(t("Example task", "样例任务"))}</th><th>${escapeHtml(t("Label", "标签"))}</th><th>${escapeHtml(t("Status", "状态"))}</th></tr></thead>
-                   <tbody>${mappingTaskRows}</tbody>
-               </table>
-             </div>
-           </details>`
-      }
-    </section>
-      <div class="task-hub-sidebar">
-        <section class="card" id="project-lane">
-          <h2>${escapeHtml(t("Project lanes", "项目泳道"))}</h2>
-          ${projectBoard}
-        </section>
-        <section class="card" id="task-live-feed">
-          <h2>${escapeHtml(t("Live activity feed", "实时活动流"))}</h2>
-          <div class="meta">${escapeHtml(t("Use this to confirm what OpenClaw and its sub-agents are doing right now.", "用于确认 OpenClaw 与子智能体当前正在执行什么。"))}</div>
-          <ul class="story-list">${replayMomentsRows}</ul>
-        </section>
-      </div>
-    </section>
-    <details class="card compact-details" id="task-table">
-      <summary>${escapeHtml(t(`Task table (raw detail, ${tasks.length}/${allTasks.length})`, `任务表格（原始明细，${tasks.length}/${allTasks.length}）`))}</summary>
+    <details class="card compact-details" id="tracked-task-view"${trackedTaskDetailsOpen ? " open" : ""}>
+      <summary>${escapeHtml(t("Tracked tasks and follow-up", "跟踪任务与跟进"))}</summary>
       <div class="fold-body">
-        <table>
-          <thead><tr><th>${escapeHtml(t("Project", "项目"))}</th><th>${escapeHtml(t("Task", "任务"))}</th><th>${escapeHtml(t("Title", "标题"))}</th><th>${escapeHtml(t("Status", "状态"))}</th><th>${escapeHtml(t("Agent", "智能体"))}</th><th>${escapeHtml(t("Due", "截止"))}</th><th>${escapeHtml(t("Updated", "更新时间"))}</th></tr></thead>
-          <tbody>${taskRows}</tbody>
-        </table>
+        <div class="meta">${escapeHtml(trackedTaskSummaryText)}</div>
+        <div class="meta">${escapeHtml(trackedTaskExplanation)}</div>
+        ${trackedTaskDetailsBody}
       </div>
     </details>
   `;
@@ -11471,7 +11505,7 @@ function buildParitySurfaceRows(input: {
     {
       id: "approvals",
       name: "审批与决策队列",
-      route: "/?section=projects-tasks&quick=attention#task-lane",
+      route: "/?section=projects-tasks&quick=attention#tracked-task-view",
       status: "enabled",
       detail: `待审批 ${input.pendingApprovals} 条，决策队列可用。`,
     },
@@ -12585,7 +12619,7 @@ function renderTaskDetailPage(input: {
           : `<div class="meta">${escapeHtml(pickUiText(language, "No session evidence is visible yet.", "当前还没有可显示的会话证据。"))}</div>`
       }
     </div>
-    <div class="meta"><a href="${escapeHtml(buildHomeHref({ quick: "all" }, true, "projects-tasks", language))}#task-lane">${escapeHtml(pickUiText(language, "Back to task lanes", "返回任务分组列表"))}</a></div>
+    <div class="meta"><a href="${escapeHtml(buildHomeHref({ quick: "all" }, true, "projects-tasks", language))}#tracked-task-view">${escapeHtml(pickUiText(language, "Back to tracked tasks", "返回跟踪任务"))}</a></div>
   </div>
 </body>
 </html>`;

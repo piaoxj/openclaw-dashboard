@@ -162,16 +162,21 @@ test("legacy mission-control routes resolve to dashboard sections", async () => 
   assert.equal(resolveDashboardSection(new URLSearchParams("section=replay-audit")), "overview");
 });
 
-test("tasks section includes merged schedule and board content", async () => {
+test("tasks section prioritizes schedule and cron before tracked task detail", async () => {
   const source = await readFile("src/ui/server.ts", "utf8");
   assert(source.includes('<section class="card" id="calendar-board">'));
-  assert(source.includes('id="task-execution-chain"'));
   assert(source.includes('id="task-timeline"'));
   assert(source.includes('t("Today and next schedule", "今日与下一批排程")'));
+  assert(source.includes('<section class="card" id="cron-execution-board">'));
+  assert(source.includes('id="tracked-task-view"'));
+  assert(source.includes('const hasTrackedTaskPanels = tasks.length > 0 || pendingDecisionCount > 0 || taskCertaintyCards.length > 0;'));
+  assert(source.includes('t("Tracked tasks and follow-up", "跟踪任务与跟进")'));
+  assert(source.includes("Start with schedule and cron execution. Staff can be active from cron or ad-hoc sessions even when there is no tracked task row yet."));
+  assert(source.includes("先看排程和 Cron 执行。员工显示在工作，可能只是 Cron 或临时会话在跑，不一定已经落成可跟踪的任务条目。"));
   assert(source.includes('<section class="task-hub-shell" id="task-hub">'));
   assert(source.includes('id="task-decision-center"'));
-  assert(source.includes('<section class="card" id="cron-execution-board">'));
   assert(source.includes('<section class="card" id="task-lane">'));
+  assert(source.includes('id="task-execution-chain"'));
   assert(source.includes('t("Execution chain", "执行链")'));
   assert(source.includes('Accepted and spawned child sessions'));
   assert(source.includes('if (options.section === "calendar") sectionBody = projectsSection;'));
@@ -193,7 +198,7 @@ test("global visibility card keeps plain-language EN/ZH copy for four key signal
   assert(en.includes("Active heartbeat checks: 1."));
   assert(en.includes('/?compact=1&amp;section=overview&amp;lang=en&amp;quick=all#cron-health'));
   assert(en.includes('/?compact=1&amp;section=overview&amp;lang=en&amp;quick=all#heartbeat-health'));
-  assert(en.includes('/?compact=1&amp;section=projects-tasks&amp;lang=en&amp;quick=all#task-lane'));
+  assert(en.includes('/?compact=1&amp;section=projects-tasks&amp;lang=en&amp;quick=all#tracked-task-view'));
   assert(en.includes('/?compact=1&amp;section=overview&amp;lang=en&amp;quick=all#tool-activity'));
   assert(!en.includes('href="/cron"'));
   assert(!en.includes('href="/sessions"'));
@@ -215,7 +220,7 @@ test("global visibility card keeps plain-language EN/ZH copy for four key signal
   assert(!zh.includes("Tasks in progress:"));
   assert(zh.includes('/?compact=1&amp;section=overview&amp;lang=zh&amp;quick=all#cron-health'));
   assert(zh.includes('/?compact=1&amp;section=overview&amp;lang=zh&amp;quick=all#heartbeat-health'));
-  assert(zh.includes('/?compact=1&amp;section=projects-tasks&amp;lang=zh&amp;quick=all#task-lane'));
+  assert(zh.includes('/?compact=1&amp;section=projects-tasks&amp;lang=zh&amp;quick=all#tracked-task-view'));
   assert(zh.includes('/?compact=1&amp;section=overview&amp;lang=zh&amp;quick=all#tool-activity'));
   assert(!zh.includes('href="/cron"'));
   assert(!zh.includes('href="/sessions"'));
@@ -323,7 +328,7 @@ test("dashboard keeps global visibility as overview-only block", async () => {
   assert(source.includes("replayPreview.stats.timeline.total"));
   assert(source.includes('t("Replay activity", "活动回放")'));
   assert(source.includes('t("Approval requests", "审批请求")'));
-  assert(source.includes('route: "/?section=projects-tasks&quick=attention#task-lane"'));
+  assert(source.includes('route: "/?section=projects-tasks&quick=attention#tracked-task-view"'));
   assert(source.includes('route: "/audit"'));
   assert(source.includes('route: "/digest/latest"'));
   assert(source.includes("void primeUiRenderCaches(toolClient);"));
