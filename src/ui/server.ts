@@ -529,10 +529,10 @@ interface EditableAgentScope {
 type EditableAgentScopeConfigStatus = "configured" | "config_missing" | "config_invalid";
 
 let renderSessionPreviewCache:
-  | { snapshotAt: string; value: SessionConversationListResult; expiresAt: number }
+  | { cacheKey: string; value: SessionConversationListResult; expiresAt: number }
   | undefined;
 let renderCollaborationPreviewCache:
-  | { snapshotAt: string; value: SessionConversationListResult; expiresAt: number }
+  | { cacheKey: string; value: SessionConversationListResult; expiresAt: number }
   | undefined;
 let renderUsageCostSummaryCache:
   | { snapshotKey: string; value: UsageCostSnapshot; expiresAt: number }
@@ -2062,7 +2062,13 @@ async function readReadModelSnapshotWithLiveSessions(toolClient: ToolClient): Pr
 async function primeUiRenderCaches(toolClient: ToolClient): Promise<void> {
   try {
     const snapshot = await readReadModelSnapshotWithLiveSessions(toolClient);
-    await Promise.all([loadCachedUsageCost(snapshot, "full"), loadCachedOfficeSessionPresence(), loadCachedReplayPreview()]);
+    await Promise.all([
+      loadCachedUsageCost(snapshot, "full"),
+      loadCachedOfficeSessionPresence(),
+      loadCachedReplayPreview(),
+      loadCachedSessionPreview(snapshot, toolClient),
+      loadCachedCollaborationPreview(snapshot, toolClient),
+    ]);
   } catch (error) {
     console.warn("[mission-control] ui cache warmup failed", {
       error: error instanceof Error ? error.message : String(error),
@@ -4238,9 +4244,12 @@ async function loadCachedTaskEvidenceSessions(
 
 async function loadCachedSessionPreview(snapshot: ReadModelSnapshot, toolClient: ToolClient): Promise<SessionConversationListResult> {
   const now = Date.now();
+  // Use time-based cache key (5-minute bucket) instead of snapshot.generatedAt
+  // This ensures cache hits even when snapshot.generatedAt changes slightly
+  const cacheKey = `session-preview|${Math.floor(now / 300000)}`;
   if (
     renderSessionPreviewCache &&
-    renderSessionPreviewCache.snapshotAt === snapshot.generatedAt &&
+    renderSessionPreviewCache.cacheKey === cacheKey &&
     renderSessionPreviewCache.expiresAt > now
   ) {
     return renderSessionPreviewCache.value;
@@ -4251,11 +4260,11 @@ async function loadCachedSessionPreview(snapshot: ReadModelSnapshot, toolClient:
     client: toolClient,
     filters: {},
     page: 1,
-    pageSize: 12,
-    historyLimit: 5,
+    pageSize: 6,
+    historyLimit: 3,
   });
   renderSessionPreviewCache = {
-    snapshotAt: snapshot.generatedAt,
+    cacheKey,
     value,
     expiresAt: now + HTML_HEAVY_CACHE_TTL_MS,
   };
@@ -4267,9 +4276,11 @@ async function loadCachedCollaborationPreview(
   toolClient: ToolClient,
 ): Promise<SessionConversationListResult> {
   const now = Date.now();
+  // Use time-based cache key (5-minute bucket) instead of snapshot.generatedAt
+  const cacheKey = `collaboration-preview|${Math.floor(now / 300000)}`;
   if (
     renderCollaborationPreviewCache &&
-    renderCollaborationPreviewCache.snapshotAt === snapshot.generatedAt &&
+    renderCollaborationPreviewCache.cacheKey === cacheKey &&
     renderCollaborationPreviewCache.expiresAt > now
   ) {
     return renderCollaborationPreviewCache.value;
@@ -4280,11 +4291,11 @@ async function loadCachedCollaborationPreview(
     client: toolClient,
     filters: {},
     page: 1,
-    pageSize: 40,
-    historyLimit: 8,
+    pageSize: 20,
+    historyLimit: 4,
   });
   renderCollaborationPreviewCache = {
-    snapshotAt: snapshot.generatedAt,
+    cacheKey,
     value,
     expiresAt: now + HTML_HEAVY_CACHE_TTL_MS,
   };
@@ -15414,6 +15425,30 @@ function writeText(
   }
   res.writeHead(statusCode, headers);
   res.end(body);
+}
+
+// Streaming response helper - sends HTML in chunks for faster TTFB
+async function streamHtml(
+  res: ServerResponse,
+  statusCode: number,
+  parts: AsyncIterable<string>,
+): Promise<void> {
+  const headers: Record<string, string> = {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "no-store, no-cache, must-revalidate, max-age=0",
+    "pragma": "no-cache",
+    "expires": "0",
+    "transfer-encoding": "chunked",
+  };
+  const requestId = responseRequestId(res);
+  if (requestId) {
+    headers["x-request-id"] = requestId;
+  }
+  res.writeHead(statusCode, headers);
+  for await (const part of parts) {
+    res.write(part);
+  }
+  res.end();
 }
 
 function redirect(res: ServerResponse, statusCode: number, location: string): void {
