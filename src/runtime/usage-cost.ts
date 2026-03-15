@@ -37,7 +37,7 @@ const CONTEXT_WARN_RATIO = 0.7;
 const CONTEXT_CRITICAL_RATIO = 0.9;
 const BUDGET_WARN_RATIO = 0.8;
 const RUNTIME_USAGE_LOOKBACK_DAYS = 62;
-const USAGE_SOURCE_CACHE_TTL_MS = 10_000;
+const USAGE_SOURCE_CACHE_TTL_MS = 60_000;
 const RUNTIME_USAGE_SCAN_CONCURRENCY = 8;
 
 type ConnectionStatus = "connected" | "partial" | "not_connected";

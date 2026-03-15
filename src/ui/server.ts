@@ -155,11 +155,11 @@ const DOC_HUB_DIR_CANDIDATES = [
   { dir: join(process.cwd(), "runtime", "evidence"), category: "证据报告" },
 ];
 const DOC_HUB_CHAT_INDEX_PATH = join(process.cwd(), "runtime", "doc-hub-chat.json");
-const HTML_HEAVY_CACHE_TTL_MS = 3_000;
-const HTML_USAGE_CACHE_TTL_MS = 10_000;
-const HTML_SNAPSHOT_CACHE_TTL_MS = 10_000;
-const HTML_LIVE_SESSIONS_CACHE_TTL_MS = POLLING_INTERVALS_MS.sessionsList;
-const HTML_REPLAY_CACHE_TTL_MS = 10_000;
+const HTML_HEAVY_CACHE_TTL_MS = 60_000;
+const HTML_USAGE_CACHE_TTL_MS = 60_000;
+const HTML_SNAPSHOT_CACHE_TTL_MS = 60_000;
+const HTML_LIVE_SESSIONS_CACHE_TTL_MS = 60_000;
+const HTML_REPLAY_CACHE_TTL_MS = 60_000;
 const JSON_MAX_BYTES = 128 * 1024;
 const FORM_MAX_BYTES = 16 * 1024;
 const EDITABLE_TEXT_FILE_MAX_BYTES = 1024 * 1024;
@@ -1574,7 +1574,7 @@ export function startUiServer(port: number, toolClient: ToolClient): Server {
         if (!task) {
           return writeText(res, 404, "Task not found", "text/plain; charset=utf-8");
         }
-        const linkedSessionItems = await loadSessionConversationItemsByKeys(snapshot, toolClient, task.sessionKeys, 24);
+        const linkedSessionItems = await loadSessionConversationItemsByKeys(snapshot, toolClient, task.sessionKeys, 12);
         const certaintyCard = buildTaskCertaintyCards({
           tasks: [task],
           sessions: snapshot.sessions,
@@ -1817,11 +1817,25 @@ export function startUiServer(port: number, toolClient: ToolClient): Server {
   });
 
   const bindAddress = process.env.UI_BIND_ADDRESS ?? "127.0.0.1";
-  server.listen(port, bindAddress, () => {
+
+  // Preload all caches before accepting requests
+  async function warmupAllCaches(): Promise<void> {
+    console.log("[mission-control] warming up caches...");
+    const warmupStart = Date.now();
+    try {
+      await primeOpenClawCliInsights();
+      await primeUiRenderCaches(toolClient);
+      console.log(`[mission-control] caches warmed up in ${Date.now() - warmupStart}ms`);
+    } catch (error) {
+      console.warn("[mission-control] cache warmup error:", error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  server.listen(port, bindAddress, async () => {
     const displayUrl = bindAddress === "0.0.0.0" ? `http://<your-ip>:${port}` : `http://${bindAddress}:${port}`;
+    // Wait for caches to warm up before logging ready
+    await warmupAllCaches();
     console.log(`[mission-control] ui listening at ${displayUrl}`);
-    void Promise.resolve().then(() => primeOpenClawCliInsights());
-    void primeUiRenderCaches(toolClient);
   });
   return server;
 }
@@ -4277,112 +4291,54 @@ async function loadCachedCollaborationPreview(
   return value;
 }
 
-function buildUsageCostCacheKey(snapshot: ReadModelSnapshot, mode: UsageCostMode): string {
-  // Content-based fingerprint – changes only when session/status data
-  // actually changes, unlike generatedAt which changes every poll cycle.
-  // Session state (running→idle etc.) affects the output (contextWindows
-  // rows use session.state), so we include it alongside status timestamps.
-  const sessionFingerprint = snapshot.sessions
-    .map((s) => `${s.sessionKey}:${s.state}`)
-    .sort()
-    .join(";");
-  const statusFingerprint = snapshot.statuses
-    .map((s) => `${s.sessionKey}:${s.updatedAt}`)
-    .sort()
-    .join(";");
-  return `${mode}|${sessionFingerprint}|${statusFingerprint}`;
+// Global usage cost cache - independent of snapshot changes
+let globalUsageCostCache: { value: UsageCostSnapshot; expiresAt: number } | undefined;
+let globalUsageCostCacheInFlight: Promise<UsageCostSnapshot> | undefined;
+
+function buildUsageCostCacheKey(_snapshot: ReadModelSnapshot, mode: UsageCostMode): string {
+  // Use a time-based cache key that rolls over every minute
+  // This ensures consistent caching across requests regardless of snapshot changes
+  const minuteBucket = Math.floor(Date.now() / 60000);
+  return `${mode}|${minuteBucket}`;
 }
 
 async function loadCachedUsageCost(
   snapshot: ReadModelSnapshot,
   mode: UsageCostMode,
 ): Promise<UsageCostSnapshot> {
-  const snapshotKey = buildUsageCostCacheKey(snapshot, mode);
+  // Use global cache - independent of snapshot changes
+  // This dramatically improves performance by avoiding redundant data loading
   const now = Date.now();
-  const targetCache = mode === "full" ? renderUsageCostFullCache : renderUsageCostSummaryCache;
-  const targetInFlight = mode === "full" ? renderUsageCostFullInFlight : renderUsageCostSummaryInFlight;
-  if (
-    targetCache &&
-    targetCache.snapshotKey === snapshotKey &&
-    targetCache.expiresAt > now
-  ) {
-    return targetCache.value;
-  }
-  if (targetCache && targetCache.snapshotKey === snapshotKey) {
-    if (!targetInFlight || targetInFlight.snapshotKey !== snapshotKey) {
-      const nextValue = buildUsageCostSnapshot(snapshot, mode);
-      if (mode === "full") {
-        renderUsageCostFullInFlight = {
-          snapshotKey,
-          value: nextValue,
-        };
-      } else {
-        renderUsageCostSummaryInFlight = {
-          snapshotKey,
-          value: nextValue,
-        };
-      }
-      void nextValue
-        .then((value) => {
-          const nextCache = {
-            snapshotKey,
-            value,
-            expiresAt: Date.now() + HTML_USAGE_CACHE_TTL_MS,
-          };
-          if (mode === "full") {
-            renderUsageCostFullCache = nextCache;
-          } else {
-            renderUsageCostSummaryCache = nextCache;
-          }
-        })
-        .finally(() => {
-          if (mode === "full") {
-            if (renderUsageCostFullInFlight?.snapshotKey === snapshotKey) {
-              renderUsageCostFullInFlight = undefined;
-            }
-          } else if (renderUsageCostSummaryInFlight?.snapshotKey === snapshotKey) {
-            renderUsageCostSummaryInFlight = undefined;
-          }
-        });
-    }
-    return targetCache.value;
-  }
-  if (targetInFlight?.snapshotKey === snapshotKey) {
-    return targetInFlight.value;
+
+  if (globalUsageCostCache && globalUsageCostCache.expiresAt > now && mode === "full") {
+    return globalUsageCostCache.value;
   }
 
-  const nextValue = buildUsageCostSnapshot(snapshot, mode);
-  if (mode === "full") {
-    renderUsageCostFullInFlight = {
-      snapshotKey,
-      value: nextValue,
-    };
-  } else {
-    renderUsageCostSummaryInFlight = {
-      snapshotKey,
-      value: nextValue,
-    };
+  if (globalUsageCostCacheInFlight && mode === "full") {
+    return globalUsageCostCacheInFlight;
   }
+
+  // Build new cache
+  const nextValue = buildUsageCostSnapshot(snapshot, mode);
+
+  if (mode === "full") {
+    globalUsageCostCacheInFlight = nextValue;
+  }
+
   try {
     const value = await nextValue;
-    const nextCache = {
-      snapshotKey,
-      value,
-      expiresAt: now + HTML_USAGE_CACHE_TTL_MS,
-    };
+
     if (mode === "full") {
-      renderUsageCostFullCache = nextCache;
-    } else {
-      renderUsageCostSummaryCache = nextCache;
+      globalUsageCostCache = {
+        value,
+        expiresAt: Date.now() + HTML_USAGE_CACHE_TTL_MS,
+      };
     }
+
     return value;
   } finally {
     if (mode === "full") {
-      if (renderUsageCostFullInFlight?.snapshotKey === snapshotKey) {
-        renderUsageCostFullInFlight = undefined;
-      }
-    } else if (renderUsageCostSummaryInFlight?.snapshotKey === snapshotKey) {
-      renderUsageCostSummaryInFlight = undefined;
+      globalUsageCostCacheInFlight = undefined;
     }
   }
 }
