@@ -108,7 +108,7 @@ test("audit timeline page renders without network and keeps severity selection",
   };
 
   const html = renderAuditPageForSmoke(timeline, "warn");
-  assert(html.includes("<title>OpenClaw Control Center Audit Timeline</title>"));
+  assert(html.includes("<title>OpenClaw Dashboard Audit Timeline</title>"));
   assert(html.includes("<h1>Audit Timeline</h1>"));
   assert(html.includes('value="warn" selected'));
   assert(html.includes("timeline &lt;unsafe&gt; marker"));
@@ -412,11 +412,11 @@ test("overview focus ring keeps a compact English label and stable inner layout"
   assert(source.includes("max-width: 56px;"));
 });
 
-test("overview page title expands to Overview Control Center in English only", async () => {
+test("overview page title expands to Overview Dashboard in English only", async () => {
   const source = await readFile("src/ui/server.ts", "utf8");
   assert(source.includes('function resolveDashboardSectionTitle(section: DashboardSectionLink, language: UiLanguage): string {'));
   assert(source.includes('if (language === "en" && section.key === "overview") {'));
-  assert(source.includes('return "Overview Control Center";'));
+  assert(source.includes('return "Overview Dashboard";'));
   assert(source.includes("const sectionTitle = resolveDashboardSectionTitle(sectionMeta, options.language);"));
   assert(source.includes('<h2 class="section-title">${escapeHtml(sectionTitle)}</h2>'));
 });
@@ -522,7 +522,7 @@ test("memory and workspace sections expose editable file workbenches", async () 
   assert(source.includes("async function resolveStaffRoleLabel("));
   assert(source.includes('return pickUiText(language, "YouTube to article writing", "YouTube 视频转长文");'));
   assert(source.includes('return pickUiText(language, "High-value content creation", "高价值内容创作");'));
-  assert(source.includes('return pickUiText(language, "Control Center delivery", "控制中心开发与交付");'));
+  assert(source.includes('return pickUiText(language, "Dashboard delivery", "仪表盘开发与交付");'));
   assert(source.includes('return pickUiText(language, "Daily news and trend briefings", "每日情报与趋势简报");'));
   assert(source.includes('return pickUiText(language, "Personal assistance and reminders", "私人助理与提醒");'));
   assert(source.includes('return pickUiText(language, "Security and updates", "安全和更新");'));

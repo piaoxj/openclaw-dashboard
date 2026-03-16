@@ -1,8 +1,8 @@
 > Looking for English? Start here: [Open the English README](README.en.md)
 
-# OpenClaw Control Center
+# OpenClaw Dashboard
 
-<img src="docs/assets/overview-hero-zh.png" alt="OpenClaw Control Center 总览横幅截图" width="1200" />
+<img src="docs/assets/overview-hero-zh.png" alt="OpenClaw Dashboard 总览横幅截图" width="1200" />
 
 OpenClaw 的安全优先、本地优先控制中心。
 
@@ -43,10 +43,10 @@ OpenClaw 的安全优先、本地优先控制中心。
 <table>
   <tr>
     <td width="56%">
-      <img src="docs/assets/token-share-zh.png" alt="OpenClaw Control Center 中文 token 消耗归因截图" width="100%" />
+      <img src="docs/assets/token-share-zh.png" alt="OpenClaw Dashboard 中文 token 消耗归因截图" width="100%" />
     </td>
     <td width="44%">
-      <img src="docs/assets/staff-zh.png" alt="OpenClaw Control Center 中文员工页截图" width="100%" />
+      <img src="docs/assets/staff-zh.png" alt="OpenClaw Dashboard 中文员工页截图" width="100%" />
     </td>
   </tr>
   <tr>
@@ -58,10 +58,10 @@ OpenClaw 的安全优先、本地优先控制中心。
 <table>
   <tr>
     <td width="56%">
-      <img src="docs/assets/collaboration-zh.png" alt="OpenClaw Control Center 中文协作页截图" width="100%" />
+      <img src="docs/assets/collaboration-zh.png" alt="OpenClaw Dashboard 中文协作页截图" width="100%" />
     </td>
     <td width="44%">
-      <img src="docs/assets/settings-insights-zh.png" alt="OpenClaw Control Center 中文安全与更新状态截图" width="100%" />
+      <img src="docs/assets/settings-insights-zh.png" alt="OpenClaw Dashboard 中文安全与更新状态截图" width="100%" />
     </td>
   </tr>
   <tr>
@@ -205,7 +205,7 @@ cp .env.example .env
 直接把下面整段原样交给 OpenClaw：
 
 ```text
-你现在要帮我把 OpenClaw Control Center 安装并接到这台机器自己的 OpenClaw 环境上。
+你现在要帮我把 OpenClaw Dashboard 安装并接到这台机器自己的 OpenClaw 环境上。
 
 你的目标不是解释原理，而是直接完成一次安全的首次接入。
 

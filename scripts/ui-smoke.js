@@ -84,8 +84,8 @@ async function checkPage(urlPath, keywords, label) {
 
 async function main() {
   await waitForUI();
-  await checkPage("/", ["OpenClaw", "Control Center", "usage", "lang="], "GET /");
-  await checkPage("/docs?lang=en", ["Open document workbench", "Control Center", "Docs"], "GET /docs?lang=en");
+  await checkPage("/", ["OpenClaw", "Dashboard", "usage", "lang="], "GET /");
+  await checkPage("/docs?lang=en", ["Open document workbench", "Dashboard", "Docs"], "GET /docs?lang=en");
   console.log(`UI smoke passed on http://127.0.0.1:${PORT}`);
   cleanup(0);
 }

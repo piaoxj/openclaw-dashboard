@@ -1,8 +1,8 @@
 > 中文用户可在这里切换：[打开中文 README](README.md)
 
-# OpenClaw Control Center
+# OpenClaw Dashboard
 
-<img src="docs/assets/overview-hero-en.png" alt="OpenClaw Control Center overview hero screenshot" width="1200" />
+<img src="docs/assets/overview-hero-en.png" alt="OpenClaw Dashboard overview hero screenshot" width="1200" />
 
 Safety-first local control center for OpenClaw.
 
@@ -43,10 +43,10 @@ Example UI from a local OpenClaw environment:
 <table>
   <tr>
     <td width="56%">
-      <img src="docs/assets/token-share-en.png" alt="OpenClaw Control Center token attribution screenshot" width="100%" />
+      <img src="docs/assets/token-share-en.png" alt="OpenClaw Dashboard token attribution screenshot" width="100%" />
     </td>
     <td width="44%">
-      <img src="docs/assets/staff-en.png" alt="OpenClaw Control Center staff page screenshot" width="100%" />
+      <img src="docs/assets/staff-en.png" alt="OpenClaw Dashboard staff page screenshot" width="100%" />
     </td>
   </tr>
   <tr>
@@ -58,10 +58,10 @@ Example UI from a local OpenClaw environment:
 <table>
   <tr>
     <td width="56%">
-      <img src="docs/assets/collaboration-en.png" alt="OpenClaw Control Center collaboration screenshot" width="100%" />
+      <img src="docs/assets/collaboration-en.png" alt="OpenClaw Dashboard collaboration screenshot" width="100%" />
     </td>
     <td width="44%">
-      <img src="docs/assets/settings-insights-en.png" alt="OpenClaw Control Center security and update status screenshot" width="100%" />
+      <img src="docs/assets/settings-insights-en.png" alt="OpenClaw Dashboard security and update status screenshot" width="100%" />
     </td>
   </tr>
   <tr>
@@ -219,7 +219,7 @@ This install instruction already accounts for common real-world differences such
 Copy the full block below into OpenClaw:
 
 ```text
-You are installing and connecting OpenClaw Control Center to this machine's OpenClaw environment.
+You are installing and connecting OpenClaw Dashboard to this machine's OpenClaw environment.
 
 Your goal is not to explain theory. Your goal is to complete a safe first-run setup end to end.
 

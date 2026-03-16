@@ -1,11 +1,11 @@
-# OpenClaw Control Center Install Prompt
+# OpenClaw Dashboard Install Prompt
 
 Language: [中文](INSTALL_PROMPT.md) | **English**
 
-Give the full prompt below to your own OpenClaw so it can install and connect `OpenClaw Control Center` to this machine's OpenClaw environment.
+Give the full prompt below to your own OpenClaw so it can install and connect `OpenClaw Dashboard` to this machine's OpenClaw environment.
 
 ```text
-You are installing and connecting OpenClaw Control Center to this machine's OpenClaw environment.
+You are installing and connecting OpenClaw Dashboard to this machine's OpenClaw environment.
 
 Your goal is not to explain theory. Your goal is to complete a safe first-run setup end to end.
 

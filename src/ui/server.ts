@@ -65,7 +65,7 @@ import {
   previewStaleAcksPrune,
 } from "../runtime/notification-center";
 import { buildPixelState } from "../runtime/pixel-state";
-import { buildUsageCostSnapshot, type UsageCostMode, type UsageCostSnapshot } from "../runtime/usage-cost";
+import { buildUsageCostSnapshot, type UsageCostMode, type UsageCostSnapshot, type UsageSubscriptionStatus, type UsageSubscriptions } from "../runtime/usage-cost";
 import { type StructuredChatDocEntry } from "../runtime/doc-hub";
 import {
   PROJECT_STATES,
@@ -128,7 +128,9 @@ import type {
   TaskState,
 } from "../types";
 
-const SNAPSHOT_PATH = join(process.cwd(), "runtime", "last-snapshot.json");
+const REPO_ROOT = process.cwd();
+const ASSET_DIR = join(REPO_ROOT, "asset");
+const SNAPSHOT_PATH = join(REPO_ROOT, "runtime", "last-snapshot.json");
 const OPENCLAW_HOME_DIR = process.env.OPENCLAW_HOME?.trim() || join(homedir(), ".openclaw");
 const OPENCLAW_CONFIG_PATH = process.env.OPENCLAW_CONFIG_PATH?.trim() || join(OPENCLAW_HOME_DIR, "openclaw.json");
 const OPENCLAW_CONFIG_DIR = dirname(OPENCLAW_CONFIG_PATH);
@@ -410,6 +412,55 @@ const ANIMAL_CATALOG = [
     accent: "#ffb85e",
     sprite: "  __\n<(o )___\n ( ._> /\n  `---'  ",
     keywords: ["rooster", "cock", "coq", "chanticleer"],
+  },
+  {
+    key: "ironman",
+    title: "Iron Man",
+    accent: "#ff4444",
+    sprite: " /##__\n |o o|\n | - |\n /|=|\\ ",
+    keywords: ["ironman", "tony", "stark"],
+  },
+  {
+    key: "thor",
+    title: "Thor",
+    accent: "#4a90d9",
+    sprite: " /\\ /\\\n |o o|\n | - |\n / | \\ ",
+    keywords: ["thor", "thorson", "odinson"],
+  },
+  {
+    key: "hulk",
+    title: "Hulk",
+    accent: "#22aa22",
+    sprite: " /##\\\n |O O|\n | - |\n / |~\\ ",
+    keywords: ["hulk", "banner", "bruce"],
+  },
+  {
+    key: "captainamerica",
+    title: "Captain America",
+    accent: "#3344aa",
+    sprite: " /^o^\\\n |★_★|\n | - |\n / | \\ ",
+    keywords: ["captainamerica", "captain", "rogers", "steve"],
+  },
+  {
+    key: "blackwidow",
+    title: "Black Widow",
+    accent: "#222222",
+    sprite: " /~~\\\n |o o|\n | - |\n/_| |_\\",
+    keywords: ["blackwidow", "widow", "natasha", "romanoff"],
+  },
+  {
+    key: "hawkeye",
+    title: "Hawkeye",
+    accent: "#885522",
+    sprite: " /~~\\\n |^o^|\n | - |\n / | \\ ",
+    keywords: ["hawkeye", "barton", "clint"],
+  },
+  {
+    key: "jarvis",
+    title: "JARVIS",
+    accent: "#00aaff",
+    sprite: " [:::]\n |o.o|\n | U |\n /| |\\",
+    keywords: ["jarvis", "vision", "ai", "main"],
   },
 ] as const;
 const FALLBACK_ANIMAL_CATALOG = ANIMAL_CATALOG.filter((item) => item.key !== "robot");
@@ -982,7 +1033,7 @@ export function startUiServer(port: number, toolClient: ToolClient): Server {
         ).join("");
         const docsHref = buildHomeHref({ quick: "all" }, true, "docs", language);
         const homeHref = buildHomeHref({ quick: "all" }, true, "overview", language);
-        const html = `<!doctype html><html><head><meta charset="utf-8" /><title>${escapeHtml(t("OpenClaw Control Center Docs", "OpenClaw Control Center 文档"))}</title></head><body><h1>${escapeHtml(t("OpenClaw Control Center Docs", "OpenClaw Control Center 文档"))}</h1><ul>${links}</ul><p><a href="${escapeHtml(docsHref)}">${escapeHtml(t("Open document workbench", "打开文档工作台"))}</a> · <a href="${escapeHtml(homeHref)}">${escapeHtml(t("Back to control center", "返回控制中心"))}</a></p></body></html>`;
+        const html = `<!doctype html><html><head><meta charset="utf-8" /><title>${escapeHtml(t("OpenClaw Dashboard Docs", "OpenClaw Dashboard 文档"))}</title></head><body><h1>${escapeHtml(t("OpenClaw Dashboard Docs", "OpenClaw Dashboard 文档"))}</h1><ul>${links}</ul><p><a href="${escapeHtml(docsHref)}">${escapeHtml(t("Open document workbench", "打开文档工作台"))}</a> · <a href="${escapeHtml(homeHref)}">${escapeHtml(t("Back to control center", "返回仪表盘"))}</a></p></body></html>`;
         return writeText(res, 200, html, "text/html; charset=utf-8");
       }
 
@@ -1000,6 +1051,29 @@ export function startUiServer(port: number, toolClient: ToolClient): Server {
           return writeApiError(res, 404, "NOT_FOUND", "Doc file not found.");
         }
         return writeText(res, 200, body, "text/markdown; charset=utf-8");
+      }
+
+      // Serve avatar images from asset directory
+      if (method === "GET" && path.startsWith("/avatars/")) {
+        const avatarName = path.slice("/avatars/".length);
+        const avatarPath = join(ASSET_DIR, avatarName);
+        try {
+          const ext = extname(avatarPath).toLowerCase();
+          const mimeTypes: Record<string, string> = {
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".png": "image/png",
+            ".gif": "image/gif",
+            ".webp": "image/webp",
+          };
+          const mimeType = mimeTypes[ext] || "application/octet-stream";
+          const data = await readFile(avatarPath);
+          res.writeHead(200, { "Content-Type": mimeType });
+          res.end(data);
+          return;
+        } catch {
+          return writeApiError(res, 404, "NOT_FOUND", "Avatar not found.");
+        }
       }
 
       if (method === "GET" && path === "/snapshot") {
@@ -2248,7 +2322,7 @@ function cronRuntimePurpose(jobId: string, language: UiLanguage): string {
     return pickUiText(
       language,
       "Refresh runtime snapshot and keep dashboard state updated.",
-      "刷新运行时快照，保持控制中心数据更新。",
+      "刷新运行时快照，保持仪表盘数据更新。",
     );
   }
   return pickUiText(language, "Run scheduled system checks.", "执行系统定时检查。");
@@ -2641,7 +2715,7 @@ function dashboardSectionLinks(language: UiLanguage): DashboardSectionLink[] {
 
 function resolveDashboardSectionTitle(section: DashboardSectionLink, language: UiLanguage): string {
   if (language === "en" && section.key === "overview") {
-    return "Overview Control Center";
+    return "Overview Dashboard";
   }
   return section.label;
 }
@@ -3066,8 +3140,8 @@ function localizeSecurityFinding(
   if (item.checkId === "gateway.trusted_proxies_missing") {
     return {
       title: "反向代理信任尚未配置",
-      detail: "如果你通过反向代理暴露控制中心，当前还没有声明可信代理来源，转发头信息可能被错误信任。",
-      remediation: "如果继续通过反向代理访问，请把可信代理 IP 配进 gateway.trustedProxies；否则保持控制中心仅本机访问。",
+      detail: "如果你通过反向代理暴露仪表盘，当前还没有声明可信代理来源，转发头信息可能被错误信任。",
+      remediation: "如果继续通过反向代理访问，请把可信代理 IP 配进 gateway.trustedProxies；否则保持仪表盘仅本机访问。",
     };
   }
   if (item.checkId === "gateway.tailscale_serve") {
@@ -3161,10 +3235,10 @@ function renderOpenClawConnectionCard(
           : "ok";
   const headline =
     overallStatus === "ok"
-      ? pickUiText(language, "Control Center is fully connected to this OpenClaw environment.", "控制中心已经完整接上这台 OpenClaw 环境。")
+      ? pickUiText(language, "Dashboard is fully connected to this OpenClaw environment.", "仪表盘已经完整接上这台 OpenClaw 环境。")
       : overallStatus === "blocked"
         ? pickUiText(language, "Some core links are still blocked.", "有核心接线还没有打通。")
-        : pickUiText(language, "Control Center is usable, but some panels are still running in partial mode.", "控制中心已经可用，但有些面板仍处于部分接线状态。");
+        : pickUiText(language, "Dashboard is usable, but some panels are still running in partial mode.", "仪表盘已经可用，但有些面板仍处于部分接线状态。");
 
   return `<article class="card" id="overview-connection-health">
     <div class="overview-command-head">
@@ -3547,11 +3621,11 @@ function buildInformationCertaintyModel(input: {
     {
       key: "subscription",
       label: pickUiText(language, "Subscription room", "订阅额度"),
-      status: usageCost.subscription.status as DataCoverageStatus,
+      status: getSubscriptionStatus(usageCost.subscription) as DataCoverageStatus,
       detail:
-        usageCost.subscription.status === "connected"
+        getSubscriptionStatus(usageCost.subscription) === "connected"
           ? pickUiText(language, "Subscription remaining and reset window are visible.", "订阅剩余额度和重置窗口可见。")
-          : usageCost.subscription.status === "partial"
+          : getSubscriptionStatus(usageCost.subscription) === "partial"
             ? pickUiText(language, "Subscription data exists, but part of the billing picture is missing.", "订阅数据已经有了，但账单画面还不完整。")
             : pickUiText(language, "Remaining subscription room is not confirmed yet.", "剩余额度目前还不能完全确认。"),
     },
@@ -4998,13 +5072,14 @@ async function renderHtml(
     { label: t("Risk signals", "风险信号"), value: attentionCount },
     { label: t("Active projects", "活跃项目"), value: snapshot.projectSummaries.filter((item) => item.status === "active").length },
   ].filter((item) => item.value > 0);
+  const firstSub = getFirstSubscription(usageCost.subscription);
   const subscriptionWindowHint =
-    usageCost.subscription.primaryWindowLabel || usageCost.subscription.secondaryUsedPercent !== undefined
-      ? `${normalizeQuotaWindowLabel(usageCost.subscription.primaryWindowLabel, "5h")} / ${normalizeQuotaWindowLabel(
-          usageCost.subscription.secondaryWindowLabel,
+    firstSub?.primaryWindowLabel || firstSub?.secondaryUsedPercent !== undefined
+      ? `${normalizeQuotaWindowLabel(firstSub.primaryWindowLabel, "5h")} / ${normalizeQuotaWindowLabel(
+          firstSub.secondaryWindowLabel,
           "Week",
         )}`
-      : usageCost.subscription.planLabel;
+      : getSubscriptionLabels(usageCost.subscription);
   const executiveCards = [
     {
       title: t("Projects", "项目"),
@@ -5028,7 +5103,7 @@ async function renderHtml(
     },
     {
       title: t("Subscription", "订阅"),
-      metric: usageCost.subscription.status === "connected" ? t("Connected", "已连接") : t("Needs connection", "待连接"),
+      metric: getSubscriptionStatus(usageCost.subscription) === "connected" ? t("Connected", "已连接") : t("Needs connection", "待连接"),
       detail: subscriptionWindowHint,
     },
     {
@@ -6371,7 +6446,7 @@ async function renderHtml(
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>OpenClaw Control Center</title>
+  <title>OpenClaw Dashboard</title>
   <style>
     :root {
       --bg: #eef2f6;
@@ -8037,6 +8112,15 @@ async function renderHtml(
       aspect-ratio: 1 / 1;
       border-radius: 12px;
     }
+    .staff-avatar.is-image {
+      padding: 4px;
+    }
+    .staff-avatar.is-image .agent-image-avatar {
+      width: 100%;
+      height: auto;
+      border-radius: 12px;
+      object-fit: cover;
+    }
     .staff-brief-identity h3 {
       margin: 0;
       font-size: 20px;
@@ -8599,7 +8683,7 @@ async function renderHtml(
     <aside class="sidebar">
       <div class="brand">
         <div class="brand-kicker">OpenClaw</div>
-        <h1>OpenClaw Control Center</h1>
+        <h1>OpenClaw Dashboard</h1>
         <div class="meta">${escapeHtml(t("Updated", "更新时间"))}${escapeHtml(options.language === "en" ? ": " : "：")}${escapeHtml(snapshot.generatedAt ?? t("Not available", "暂无"))}</div>
         ${languageToggle}
       </div>
@@ -9387,10 +9471,10 @@ async function resolveStaffRoleLabel(member: TeamMemberSnapshot, language: UiLan
     key === "pandas" &&
     (normalized.includes("control-center project end-to-end") ||
       normalized.includes("control center project end to end") ||
-      combined.includes("控制中心") ||
+      combined.includes("仪表盘") ||
       combined.includes("唯一主任务"))
   ) {
-    return pickUiText(language, "Control Center delivery", "控制中心开发与交付");
+    return pickUiText(language, "Dashboard delivery", "仪表盘开发与交付");
   }
 
   if (
@@ -9446,8 +9530,8 @@ async function resolveStaffRoleLabel(member: TeamMemberSnapshot, language: UiLan
   ) {
     return pickUiText(language, "YouTube to article writing", "YouTube 视频转长文");
   }
-  if (explicit && (normalizeEvidenceText(explicit).includes("control-center") || explicit.includes("控制中心"))) {
-    return pickUiText(language, "Control Center delivery", "控制中心开发与交付");
+  if (explicit && (normalizeEvidenceText(explicit).includes("control-center") || explicit.includes("仪表盘"))) {
+    return pickUiText(language, "Dashboard delivery", "仪表盘开发与交付");
   }
   if (explicit && (normalizeEvidenceText(explicit).includes("creator") || explicit.includes("创作"))) {
     return pickUiText(language, "High-value content creation", "高价值内容创作");
@@ -11080,12 +11164,19 @@ function renderStaffOverviewCards(cards: StaffOverviewCard[], language: UiLangua
     )}</div>`;
   }
 
+  // Avatar images for specific agents
+  const IMAGE_AVATAR_AGENTS = ["ironman", "thor", "hulk", "captainamerica", "blackwidow", "hawkeye", "jarvis"];
+
   return `<div class="staff-brief-grid">${cards
     .map((card) => {
-      const avatar = `<div class="staff-avatar" style="--agent-accent:${escapeHtml(card.identity.accent)};" data-agent-id="${escapeHtml(card.agentId)}" data-animal="${escapeHtml(card.identity.animal)}">
-        <div class="agent-stage" aria-hidden="true">
-          <canvas class="agent-pixel-canvas" width="256" height="256"></canvas>
-        </div>
+      const isImageAvatar = IMAGE_AVATAR_AGENTS.includes(card.identity.animal);
+      const avatarHtml = isImageAvatar
+        ? `<img class="agent-image-avatar" src="/avatars/${card.identity.animal}.jpg" alt="${escapeHtml(card.identity.title)}" width="256" height="256" />`
+        : `<div class="agent-stage" aria-hidden="true">
+            <canvas class="agent-pixel-canvas" width="256" height="256"></canvas>
+          </div>`;
+      const avatar = `<div class="staff-avatar${isImageAvatar ? " is-image" : ""}" style="--agent-accent:${escapeHtml(card.identity.accent)};" data-agent-id="${escapeHtml(card.agentId)}" data-animal="${escapeHtml(card.identity.animal)}">
+        ${avatarHtml}
       </div>`;
       return `<article class="staff-brief-card">
         <div class="staff-brief-head">
@@ -14117,6 +14208,23 @@ function normalizeQuotaWindowLabel(label: string | undefined, fallback: string):
   return raw;
 }
 
+function getSubscriptionStatus(subscriptions: UsageSubscriptions): "connected" | "partial" | "not_connected" {
+  if (subscriptions.length === 0) return "not_connected";
+  if (subscriptions.some((s) => s.status === "connected")) return "connected";
+  if (subscriptions.some((s) => s.status === "partial")) return "partial";
+  return "not_connected";
+}
+
+function getFirstSubscription(subscriptions: UsageSubscriptions): UsageSubscriptionStatus | undefined {
+  return subscriptions[0];
+}
+
+function getSubscriptionLabels(subscriptions: UsageSubscriptions): string {
+  if (subscriptions.length === 0) return "";
+  if (subscriptions.length === 1) return subscriptions[0].planLabel;
+  return subscriptions.map((s) => s.planLabel).join(", ");
+}
+
 function asPercent(value: number | undefined): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
   if (value < 0) return 0;
@@ -14156,49 +14264,51 @@ function renderQuotaWindowRow(
 }
 
 function renderSubscriptionSidebarSummary(
-  subscription: UsageCostSnapshot["subscription"],
+  subscriptions: UsageSubscriptions,
   language: UiLanguage = "zh",
 ): string {
-  if (subscription.status === "connected" && (subscription.primaryWindowLabel || subscription.secondaryUsedPercent !== undefined)) {
-    const primaryUsed = asPercent(subscription.primaryUsedPercent ?? subscription.usagePercent);
+  const firstSub = getFirstSubscription(subscriptions);
+  if (!firstSub) return "";
+  if (firstSub.status === "connected" && (firstSub.primaryWindowLabel || firstSub.secondaryUsedPercent !== undefined)) {
+    const primaryUsed = asPercent(firstSub.primaryUsedPercent ?? firstSub.usagePercent);
     const primaryRemaining = asPercent(
-      subscription.primaryRemainingPercent ??
+      firstSub.primaryRemainingPercent ??
         (typeof primaryUsed === "number" ? 100 - primaryUsed : undefined),
     );
-    const secondaryUsed = asPercent(subscription.secondaryUsedPercent);
+    const secondaryUsed = asPercent(firstSub.secondaryUsedPercent);
     const secondaryRemaining = asPercent(
-      subscription.secondaryRemainingPercent ??
+      firstSub.secondaryRemainingPercent ??
         (typeof secondaryUsed === "number" ? 100 - secondaryUsed : undefined),
     );
     return `<div class="quota-compact">
       ${renderQuotaWindowRow({
-        label: normalizeQuotaWindowLabel(subscription.primaryWindowLabel, "5h"),
+        label: normalizeQuotaWindowLabel(firstSub.primaryWindowLabel, "5h"),
         usedPercent: primaryUsed,
         remainingPercent: primaryRemaining,
-        resetAt: subscription.primaryResetAt ?? subscription.cycleEnd,
+        resetAt: firstSub.primaryResetAt ?? firstSub.cycleEnd,
       }, language)}
       ${renderQuotaWindowRow({
-        label: normalizeQuotaWindowLabel(subscription.secondaryWindowLabel, "Week"),
+        label: normalizeQuotaWindowLabel(firstSub.secondaryWindowLabel, "Week"),
         usedPercent: secondaryUsed,
         remainingPercent: secondaryRemaining,
-        resetAt: subscription.secondaryResetAt,
+        resetAt: firstSub.secondaryResetAt,
       }, language)}
     </div>`;
   }
   return [
-    typeof subscription.consumed === "number"
-      ? `<div class="meta">${subscription.status === "connected" ? pickUiText(language, "Used", "已用") : pickUiText(language, "Estimated used", "估算已用")}：${escapeHtml(formatSubscriptionNumericField(subscription.consumed, subscription.unit, subscription.status === "connected" ? "used" : "estimated_used", language))}</div>`
+    typeof firstSub.consumed === "number"
+      ? `<div class="meta">${firstSub.status === "connected" ? pickUiText(language, "Used", "已用") : pickUiText(language, "Estimated used", "估算已用")}：${escapeHtml(formatSubscriptionNumericField(firstSub.consumed, firstSub.unit, firstSub.status === "connected" ? "used" : "estimated_used", language))}</div>`
       : "",
-    typeof subscription.remaining === "number"
-      ? `<div class="meta">${subscription.status === "connected" ? pickUiText(language, "Remaining", "剩余") : pickUiText(language, "Estimated remaining", "估算剩余")}：${escapeHtml(formatSubscriptionNumericField(subscription.remaining, subscription.unit, subscription.status === "connected" ? "remaining" : "estimated_remaining", language))}</div>`
+    typeof firstSub.remaining === "number"
+      ? `<div class="meta">${firstSub.status === "connected" ? pickUiText(language, "Remaining", "剩余") : pickUiText(language, "Estimated remaining", "估算剩余")}：${escapeHtml(formatSubscriptionNumericField(firstSub.remaining, firstSub.unit, firstSub.status === "connected" ? "remaining" : "estimated_remaining", language))}</div>`
       : "",
   ]
     .filter((item) => item.length > 0)
     .join("");
 }
 
-function renderSubscriptionStatusCard(
-  subscription: UsageCostSnapshot["subscription"],
+function renderSingleSubscriptionStatusCard(
+  subscription: UsageSubscriptionStatus,
   language: UiLanguage = "zh",
 ): string {
   const statusLabel =
@@ -14294,6 +14404,25 @@ function renderSubscriptionStatusCard(
     )}：${escapeHtml(usagePercent)}</div>
     <div class="meta">${escapeHtml(pickUiText(language, "Cycle", "周期"))}：${escapeHtml(cycleStart)} → ${escapeHtml(cycleEnd)}</div>
   </div>`;
+}
+
+function renderSubscriptionStatusCard(
+  subscriptions: UsageSubscriptions,
+  language: UiLanguage = "zh",
+): string {
+  if (!subscriptions || subscriptions.length === 0) {
+    return renderSingleSubscriptionStatusCard({
+      status: "not_connected",
+      planLabel: "No subscription",
+      unit: "USD",
+      detail: "",
+      connectHint: "",
+    }, language);
+  }
+  if (subscriptions.length === 1) {
+    return renderSingleSubscriptionStatusCard(subscriptions[0], language);
+  }
+  return subscriptions.map((sub) => renderSingleSubscriptionStatusCard(sub, language)).join("\n");
 }
 
 export function renderSubscriptionStatusCardForSmoke(subscription: UsageCostSnapshot["subscription"]): string {
@@ -14919,7 +15048,7 @@ function renderSessionDrilldownPage(
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>${escapeHtml(t("OpenClaw Control Center Session Drilldown", "OpenClaw 控制中心会话详情"))}</title>
+  <title>${escapeHtml(t("OpenClaw Dashboard Session Drilldown", "OpenClaw 仪表盘会话详情"))}</title>
   <style>
     body { font-family: "SF Mono", Menlo, monospace; background: #0b1016; color: #d6e7f9; padding: 16px; margin: 0; }
     a { color: #7dd3fc; }
@@ -15010,7 +15139,7 @@ function renderAuditPage(timeline: AuditTimelineSnapshot, severity: AuditSeverit
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>OpenClaw Control Center Audit Timeline</title>
+  <title>OpenClaw Dashboard Audit Timeline</title>
   <style>
     body { font-family: "SF Mono", Menlo, monospace; background: #0b1016; color: #d6e7f9; padding: 16px; margin: 0; }
     a { color: #7dd3fc; }
@@ -15456,11 +15585,10 @@ function writeText(
   const useGzip = acceptEncoding.includes("gzip");
 
   if (useGzip && body.length > 1024) {
-    // Only compress bodies larger than 1KB
     const gzip = createGzip();
     headers["content-encoding"] = "gzip";
     res.writeHead(statusCode, headers);
-    res.end(gzip);
+    gzip.pipe(res);
     gzip.end(body);
   } else {
     res.writeHead(statusCode, headers);

@@ -1,11 +1,11 @@
-# OpenClaw Control Center 安装 Prompt
+# OpenClaw Dashboard 安装 Prompt
 
 默认语言：**中文** | [English](INSTALL_PROMPT.en.md)
 
-把下面整段原样交给你自己的 OpenClaw，让它帮你把 `OpenClaw Control Center` 安装并接到这台机器自己的 OpenClaw 环境上。
+把下面整段原样交给你自己的 OpenClaw，让它帮你把 `OpenClaw Dashboard` 安装并接到这台机器自己的 OpenClaw 环境上。
 
 ```text
-你现在要帮我把 OpenClaw Control Center 安装并接到这台机器自己的 OpenClaw 环境上。
+你现在要帮我把 OpenClaw Dashboard 安装并接到这台机器自己的 OpenClaw 环境上。
 
 你的目标不是解释原理，而是直接完成一次安全的首次接入。
 

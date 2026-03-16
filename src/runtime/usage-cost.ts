@@ -17,7 +17,12 @@ const CODEX_RATE_LIMIT_CONNECTOR_PATH = join(CODEX_SESSIONS_DIR, "**", "*.jsonl"
 const CODEX_RATE_LIMIT_SESSION_SCAN_LIMIT = 48;
 const CODEX_WHAM_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 const CODEX_WHAM_USAGE_TIMEOUT_MS = 3_000;
+const SUBSCRIPTION_SNAPSHOT_PATHS_ENV = process.env.OPENCLAW_SUBSCRIPTION_SNAPSHOT_PATHS?.trim();
+const SUBSCRIPTION_SNAPSHOT_PATHS_MULTI = SUBSCRIPTION_SNAPSHOT_PATHS_ENV
+  ? SUBSCRIPTION_SNAPSHOT_PATHS_ENV.split(",").map((p) => p.trim()).filter((p) => p.length > 0)
+  : [];
 const SUBSCRIPTION_SNAPSHOT_PATHS = [
+  ...SUBSCRIPTION_SNAPSHOT_PATHS_MULTI,
   process.env.OPENCLAW_SUBSCRIPTION_SNAPSHOT_PATH?.trim(),
   DEFAULT_SUBSCRIPTION_SNAPSHOT_PATH,
   join(OPENCLAW_HOME, "subscription.json"),
@@ -63,10 +68,10 @@ let runtimeUsageDataCache: TimedSourceCache<RuntimeUsageData> | undefined;
 let runtimeUsageDataInFlight: Promise<RuntimeUsageData> | undefined;
 let openclawCronJobNameMapCache: TimedSourceCache<Map<string, string>> | undefined;
 let openclawCronJobNameMapInFlight: Promise<Map<string, string>> | undefined;
-let subscriptionUsageWithCodexCache: TimedSourceCache<UsageSubscriptionStatus> | undefined;
-let subscriptionUsageWithCodexInFlight: Promise<UsageSubscriptionStatus> | undefined;
-let subscriptionUsageWithoutCodexCache: TimedSourceCache<UsageSubscriptionStatus> | undefined;
-let subscriptionUsageWithoutCodexInFlight: Promise<UsageSubscriptionStatus> | undefined;
+let subscriptionUsageWithCodexCache: TimedSourceCache<UsageSubscriptions> | undefined;
+let subscriptionUsageWithCodexInFlight: Promise<UsageSubscriptions> | undefined;
+let subscriptionUsageWithoutCodexCache: TimedSourceCache<UsageSubscriptions> | undefined;
+let subscriptionUsageWithoutCodexInFlight: Promise<UsageSubscriptions> | undefined;
 
 export interface UsagePeriodSummary {
   key: "today" | "7d" | "30d";
@@ -159,6 +164,8 @@ export interface UsageSubscriptionStatus {
   secondaryResetAt?: string;
 }
 
+export type UsageSubscriptions = UsageSubscriptionStatus[];
+
 export interface UsageCostSnapshot {
   generatedAt: string;
   periods: UsagePeriodSummary[];
@@ -166,7 +173,7 @@ export interface UsageCostSnapshot {
   breakdown: UsageBreakdownGroups;
   breakdownToday: UsageBreakdownGroups;
   budget: UsageBudgetStatus;
-  subscription: UsageSubscriptionStatus;
+  subscription: UsageSubscriptions;
   connectors: UsageConnectorStatus;
 }
 
@@ -362,7 +369,7 @@ async function loadCachedOpenclawCronJobNameMap(): Promise<Map<string, string>> 
 
 async function loadCachedSubscriptionUsage(options: {
   includeCodexTelemetry?: boolean;
-} = {}): Promise<UsageSubscriptionStatus> {
+} = {}): Promise<UsageSubscriptions> {
   const includeCodexTelemetry = options.includeCodexTelemetry !== false;
   return loadSourceWithCache(
     includeCodexTelemetry ? subscriptionUsageWithCodexCache : subscriptionUsageWithoutCodexCache,
@@ -412,7 +419,7 @@ export function computeUsageCostSnapshot(
   digests: UsageDigest[],
   modelCatalog: ModelContextCatalogEntry[],
   runtimeUsage?: RuntimeUsageData,
-  subscriptionUsage?: UsageSubscriptionStatus,
+  subscriptionUsage?: UsageSubscriptions,
   cronJobNameMap: Map<string, string> = new Map(),
 ): UsageCostSnapshot {
   const generatedAt = new Date().toISOString();
@@ -547,9 +554,12 @@ export function computeUsageCostSnapshot(
   const byCronAgentToday = buildCronAgentBreakdownFromRuntimeEvents(runtimeEventsToday, runtime.sourceStatus);
 
   const budget = buildUsageBudgetStatus(snapshot, period30);
-  const subscription = finalizeSubscriptionUsage(subscriptionUsage, period30, budget);
+  const subscription = finalizeSubscriptionUsages(subscriptionUsage, period30, budget);
 
   const providerUnknownCount = byProvider.filter((item) => item.label === "Unknown provider").length;
+  const firstSubscription = subscription[0];
+  const hasAnySubscriptionConnected = subscription.some((s) => s.status === "connected");
+  const hasAnySubscriptionSignal = subscription.some((s) => s.status !== "not_connected");
   const connectorStatus = buildConnectorStatus({
     hasDigestHistory: digests.length > 0,
     hasRequestCounts: runtime.sourceStatus !== "not_connected",
@@ -557,11 +567,11 @@ export function computeUsageCostSnapshot(
     hasRuntimeContext: runtimeContextRows > 0,
     hasProviderUnknown: providerUnknownCount > 0,
     hasBudgetLimit: budget.status !== "not_connected",
-    hasSubscriptionConnected: subscription.status === "connected",
-    hasSubscriptionSignal: subscription.status !== "not_connected",
-    subscriptionConnectHint: subscription.connectHint,
-    subscriptionDetail: subscription.detail,
-    subscriptionReasonCode: subscription.reasonCode,
+    hasSubscriptionConnected: hasAnySubscriptionConnected,
+    hasSubscriptionSignal: hasAnySubscriptionSignal,
+    subscriptionConnectHint: firstSubscription?.connectHint ?? "",
+    subscriptionDetail: firstSubscription?.detail ?? "",
+    subscriptionReasonCode: firstSubscription?.reasonCode,
   });
 
   return {
@@ -1898,10 +1908,10 @@ function subscriptionTodoDetail(
   return "Subscription usage fields are incomplete.";
 }
 
-async function loadSubscriptionUsage(options: { includeCodexTelemetry?: boolean } = {}): Promise<UsageSubscriptionStatus> {
+async function loadSubscriptionUsage(options: { includeCodexTelemetry?: boolean } = {}): Promise<UsageSubscriptions> {
   const includeCodexTelemetry = options.includeCodexTelemetry !== false;
   const connectHint = subscriptionConnectHint();
-  let partial: UsageSubscriptionStatus | undefined;
+  const subscriptions: UsageSubscriptionStatus[] = [];
   const missingPaths: string[] = [];
   const unreadablePaths: string[] = [];
 
@@ -1909,8 +1919,7 @@ async function loadSubscriptionUsage(options: { includeCodexTelemetry?: boolean 
     try {
       const raw = JSON.parse(await readFile(path, "utf8")) as unknown;
       const parsed = parseSubscriptionUsage(raw, path, connectHint);
-      if (parsed.status === "connected") return parsed;
-      partial = partial ?? parsed;
+      subscriptions.push(parsed);
     } catch (error) {
       if (isFsNotFound(error)) {
         missingPaths.push(path);
@@ -1921,18 +1930,20 @@ async function loadSubscriptionUsage(options: { includeCodexTelemetry?: boolean 
   }
 
   const codexWhamUsage = includeCodexTelemetry ? await loadCodexWhamUsage(connectHint) : undefined;
-  if (codexWhamUsage?.status === "connected") return codexWhamUsage;
+  if (codexWhamUsage) subscriptions.push(codexWhamUsage);
 
   const codexRateLimitUsage = includeCodexTelemetry ? await loadCodexRateLimitUsage(connectHint) : undefined;
-  if (codexRateLimitUsage?.status === "connected") return codexRateLimitUsage;
+  if (codexRateLimitUsage) subscriptions.push(codexRateLimitUsage);
 
-  if (partial) return partial;
-  if (codexWhamUsage) return codexWhamUsage;
-  if (codexRateLimitUsage) return codexRateLimitUsage;
+  const connectedCount = subscriptions.filter((s) => s.status === "connected").length;
+  if (connectedCount > 0 || subscriptions.length > 0) {
+    return subscriptions;
+  }
+
   if (unreadablePaths.length > 0) {
     const missingSegment =
       missingPaths.length > 0 ? ` Missing path(s): ${missingPaths.join(", ")}.` : "";
-    return {
+    return [{
       status: "partial",
       planLabel: "Subscription data unreadable",
       unit: "USD",
@@ -1940,12 +1951,23 @@ async function loadSubscriptionUsage(options: { includeCodexTelemetry?: boolean 
       sourcePath: unreadablePaths.join("; "),
       connectHint,
       reasonCode: "provider_snapshot_unreadable",
-    };
+    }];
   }
-  return defaultSubscriptionUsage(missingPaths);
+  return [defaultSubscriptionUsage(missingPaths)];
 }
 
-function finalizeSubscriptionUsage(
+function finalizeSubscriptionUsages(
+  subscriptionUsages: UsageSubscriptions | undefined,
+  period30: UsagePeriodSummary | undefined,
+  budget: UsageBudgetStatus | undefined,
+): UsageSubscriptions {
+  if (!subscriptionUsages || subscriptionUsages.length === 0) {
+    return [finalizeSingleSubscription(undefined, period30, budget)];
+  }
+  return subscriptionUsages.map((sub) => finalizeSingleSubscription(sub, period30, budget));
+}
+
+function finalizeSingleSubscription(
   subscriptionUsage: UsageSubscriptionStatus | undefined,
   period30: UsagePeriodSummary | undefined,
   budget: UsageBudgetStatus | undefined,
