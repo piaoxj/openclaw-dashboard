@@ -7647,6 +7647,15 @@ async function renderHtml(
         linear-gradient(180deg, rgba(240, 247, 255, 0.99), rgba(255, 255, 255, 0.98)),
         radial-gradient(circle at 50% 0%, rgba(0, 113, 227, 0.08), transparent 60%);
     }
+    .collaboration-avatar.is-image {
+      padding: 4px;
+    }
+    .collaboration-avatar.is-image .agent-image-avatar {
+      width: 100%;
+      height: auto;
+      border-radius: 8px;
+      object-fit: cover;
+    }
     .collaboration-thread-copy {
       min-width: 0;
       display: grid;
@@ -12586,6 +12595,7 @@ function renderCollaborationThreadCards(
   cards: CollaborationThreadCard[],
   language: UiLanguage = "zh",
 ): string {
+  const IMAGE_AVATAR_AGENTS = ["ironman", "thor", "hulk", "captainamerica", "blackwidow", "hawkeye", "jarvis"];
   if (cards.length === 0) {
     return `<div class="empty-state">${escapeHtml(
       pickUiText(
@@ -12600,11 +12610,15 @@ function renderCollaborationThreadCards(
     .map((card) => {
       const participantAvatars = card.participants
         .map((participant, index) => {
-          const avatar = `<div class="collaboration-participant">
-            <div class="agent-avatar collaboration-avatar${participant.current ? " is-current" : ""}" style="--agent-accent:${escapeHtml(participant.identity.accent)};" data-agent-id="${escapeHtml(participant.agentId)}" data-animal="${escapeHtml(participant.identity.animal)}" aria-label="${escapeHtml(participant.label)}">
-              <div class="agent-stage" aria-hidden="true">
+          const isImageAvatar = IMAGE_AVATAR_AGENTS.includes(participant.identity.animal);
+          const avatarImage = isImageAvatar
+            ? `<img class="agent-image-avatar" src="/avatars/${participant.identity.animal}.jpg" alt="${escapeHtml(participant.label)}" width="224" height="224" />`
+            : `<div class="agent-stage" aria-hidden="true">
                 <canvas class="agent-pixel-canvas" width="224" height="224"></canvas>
-              </div>
+              </div>`;
+          const avatar = `<div class="collaboration-participant">
+            <div class="agent-avatar collaboration-avatar${participant.current ? " is-current" : ""}${isImageAvatar ? " is-image" : ""}" style="--agent-accent:${escapeHtml(participant.identity.accent)};" data-agent-id="${escapeHtml(participant.agentId)}" data-animal="${escapeHtml(participant.identity.animal)}" aria-label="${escapeHtml(participant.label)}">
+              ${avatarImage}
             </div>
             <div class="collaboration-participant-label">${escapeHtml(participant.roleLabel)}</div>
           </div>`;
