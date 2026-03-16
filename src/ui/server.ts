@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { createGzip } from "node:zlib";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
@@ -160,6 +161,8 @@ const HTML_USAGE_CACHE_TTL_MS = 60_000;
 const HTML_SNAPSHOT_CACHE_TTL_MS = 60_000;
 const HTML_LIVE_SESSIONS_CACHE_TTL_MS = 60_000;
 const HTML_REPLAY_CACHE_TTL_MS = 60_000;
+// HTML full page cache - cache the entire rendered HTML
+const HTML_FULL_PAGE_CACHE_TTL_MS = 30_000;
 const JSON_MAX_BYTES = 128 * 1024;
 const FORM_MAX_BYTES = 16 * 1024;
 const EDITABLE_TEXT_FILE_MAX_BYTES = 1024 * 1024;
@@ -601,6 +604,15 @@ let renderLiveSessionsCache:
 let renderLiveSessionsInFlight: Promise<Awaited<ReturnType<ToolClient["sessionsList"]>>> | undefined;
 let renderReplayPreviewInFlight: Promise<Awaited<ReturnType<typeof loadReplayIndex>>> | undefined;
 
+// HTML full page cache - keyed by section + language + other relevant params
+let renderFullPageCache:
+  | {
+      cacheKey: string;
+      value: string;
+      expiresAt: number;
+    }
+  | undefined;
+
 type GlobalVisibilityTaskStatus = "done" | "not_done";
 
 interface GlobalVisibilityTaskRow {
@@ -935,6 +947,13 @@ export function startUiServer(port: number, toolClient: ToolClient): Server {
           });
         }
 
+        // Check full page cache first
+        const now = Date.now();
+        const pageCacheKey = `page|${section}|${language}|${compactStatusStrip}|${usageView}|${filters.quick ?? ""}|${filters.status ?? ""}|${filters.owner ?? ""}|${filters.project ?? ""}`;
+        if (renderFullPageCache && renderFullPageCache.cacheKey === pageCacheKey && renderFullPageCache.expiresAt > now) {
+          return writeText(res, 200, renderFullPageCache.value, "text/html; charset=utf-8");
+        }
+
         const html = await renderHtml(filters, toolClient, {
           section,
           language,
@@ -943,6 +962,14 @@ export function startUiServer(port: number, toolClient: ToolClient): Server {
           preferencesPath: prefs.path,
           search,
         });
+
+        // Cache the rendered HTML
+        renderFullPageCache = {
+          cacheKey: pageCacheKey,
+          value: html,
+          expiresAt: now + HTML_FULL_PAGE_CACHE_TTL_MS,
+        };
+
         return writeText(res, 200, html, "text/html; charset=utf-8");
       }
 
@@ -15423,8 +15450,22 @@ function writeText(
   if (requestId) {
     headers["x-request-id"] = requestId;
   }
-  res.writeHead(statusCode, headers);
-  res.end(body);
+
+  // Check if client accepts gzip compression
+  const acceptEncoding = res.req.headers["accept-encoding"] ?? "";
+  const useGzip = acceptEncoding.includes("gzip");
+
+  if (useGzip && body.length > 1024) {
+    // Only compress bodies larger than 1KB
+    const gzip = createGzip();
+    headers["content-encoding"] = "gzip";
+    res.writeHead(statusCode, headers);
+    res.end(gzip);
+    gzip.end(body);
+  } else {
+    res.writeHead(statusCode, headers);
+    res.end(body);
+  }
 }
 
 // Streaming response helper - sends HTML in chunks for faster TTFB
