@@ -129,7 +129,7 @@ import type {
 } from "../types";
 
 const REPO_ROOT = process.cwd();
-const ASSET_DIR = join(REPO_ROOT, "asset");
+const AVATARS_DIR = join(REPO_ROOT, "avatars");
 const SNAPSHOT_PATH = join(REPO_ROOT, "runtime", "last-snapshot.json");
 const OPENCLAW_HOME_DIR = process.env.OPENCLAW_HOME?.trim() || join(homedir(), ".openclaw");
 const OPENCLAW_CONFIG_PATH = process.env.OPENCLAW_CONFIG_PATH?.trim() || join(OPENCLAW_HOME_DIR, "openclaw.json");
@@ -341,7 +341,7 @@ const ANIMAL_CATALOG = [
     title: "Lion Captain",
     accent: "#ff9966",
     sprite: " /\\_/\\ \n( 0_0 )\n /|^|\\ \n  / \\  ",
-    keywords: ["lion", "lead", "main", "chief", "alpha"],
+    keywords: ["lion", "lead", "chief", "alpha"],
   },
   {
     key: "panda",
@@ -1053,10 +1053,10 @@ export function startUiServer(port: number, toolClient: ToolClient): Server {
         return writeText(res, 200, body, "text/markdown; charset=utf-8");
       }
 
-      // Serve avatar images from asset directory
+      // Serve avatar images from avatars directory
       if (method === "GET" && path.startsWith("/avatars/")) {
         const avatarName = path.slice("/avatars/".length);
-        const avatarPath = join(ASSET_DIR, avatarName);
+        const avatarPath = join(AVATARS_DIR, avatarName);
         try {
           const ext = extname(avatarPath).toLowerCase();
           const mimeTypes: Record<string, string> = {
@@ -2499,6 +2499,7 @@ async function buildGlobalVisibilityViewModel(
     followupTaskEvidenceCount?: number;
     weakTaskEvidenceCount?: number;
     toolCallsCount?: number;
+    latestHeartbeatRun?: TaskHeartbeatRun | undefined;
   } = {},
 ): Promise<GlobalVisibilityViewModel> {
   const cronOverview = input.cronOverview ?? (await buildCronOverview(snapshot, POLLING_INTERVALS_MS.cron));
@@ -2523,7 +2524,7 @@ async function buildGlobalVisibilityViewModel(
   ]).size;
   const enabledHeartbeatCount = heartbeatJobs.filter((job) => job.enabled).length;
   const heartbeatEnabled = heartbeatJobs.some((job) => job.enabled);
-  const latestHeartbeatRun = (await readTaskHeartbeatRuns(1)).runs[0];
+  const latestHeartbeatRun = input.latestHeartbeatRun ?? (await readTaskHeartbeatRuns(1)).runs[0];
   const cronTaskName =
     enabledCronCount > 0
       ? pickUiText(language, `${enabledCronCount} jobs enabled`, `已启用 ${enabledCronCount} 个任务`)
@@ -4751,14 +4752,18 @@ async function renderHtml(
   const runtimeSessionIssueCount = sessionBlockedCount + sessionErrorCount + sessionWaitingApprovalCount;
   const stalledRunningSessionCount = countStalledRunningSessions(snapshot.sessions, taskSignalItems, nowMs);
   const runtimeIssueCount = runtimeSessionIssueCount + stalledRunningSessionCount;
-  const globalVisibilityModel = await buildGlobalVisibilityViewModel(snapshot, toolClient, options.language, {
+  const heartbeatRunsPromise = readTaskHeartbeatRuns(1);
+  const globalVisibilityModelPromise = buildGlobalVisibilityViewModel(snapshot, toolClient, options.language, {
     cronOverview,
     openclawCronJobs,
     currentTasksCount: taskCertaintyCards.length,
     strongTaskEvidenceCount: taskCertaintyStrongCount,
     followupTaskEvidenceCount: taskCertaintyFollowupCount,
     weakTaskEvidenceCount: taskCertaintyWeakCount,
+    toolCallsCount: 0,
   });
+  const [heartbeatRuns, globalVisibilityModel] = await Promise.all([heartbeatRunsPromise, globalVisibilityModelPromise]);
+  const latestHeartbeatRun = heartbeatRuns.runs[0];
   const attentionCount = actionQueue.counts.unacked + runtimeIssueCount + nonOkBudgets.length;
   const replayMoments = replayPreview.timeline.entries.slice(0, 8);
   const replaySignals = [
@@ -4772,8 +4777,6 @@ async function renderHtml(
   const heartbeatNextRun =
     heartbeatJobs.find((job) => job.enabled)?.nextRunAt ?? heartbeatJobs[0]?.nextRunAt ?? t("Not scheduled", "未排程");
   const heartbeatHealth = heartbeatEnabledCount > 0 ? "ok" : "warn";
-  const heartbeatRuns = await readTaskHeartbeatRuns(1);
-  const latestHeartbeatRun = heartbeatRuns.runs[0];
   const currentTaskHealth = taskCertaintyWeakCount === 0 ? "ok" : "warn";
   const mappingTaskHint =
     controlCenterMappingTasks.length > 0
