@@ -162,6 +162,7 @@ export interface UsageSubscriptionStatus {
   secondaryUsedPercent?: number;
   secondaryRemainingPercent?: number;
   secondaryResetAt?: string;
+  resetIn?: string;
 }
 
 export type UsageSubscriptions = UsageSubscriptionStatus[];
@@ -2609,6 +2610,9 @@ function parseSubscriptionUsage(
     asString(billing.end) ??
     asString(billing.to) ??
     asString(billing.resetAt);
+  const resetIn =
+    asString(subscription.resetIn) ??
+    asString(root.resetIn);
 
   const hasSignal = consumed !== undefined || remaining !== undefined || limit !== undefined;
   if (!hasSignal) {
@@ -2619,6 +2623,7 @@ function parseSubscriptionUsage(
         unit,
         cycleStart,
         cycleEnd,
+        resetIn,
         sourcePath,
         detail: `Local estimated snapshot found at ${sourcePath}; strict mode ignores consumed/remaining/limit until provider billing fields are connected.`,
         connectHint,
@@ -2631,6 +2636,7 @@ function parseSubscriptionUsage(
       unit,
       cycleStart,
       cycleEnd,
+      resetIn,
       sourcePath,
       detail: `Subscription snapshot found at ${sourcePath}, but consumed/remaining/limit fields are unavailable.`,
       connectHint,
@@ -2669,6 +2675,7 @@ function parseSubscriptionUsage(
     unit,
     cycleStart,
     cycleEnd,
+    resetIn,
     sourcePath,
     detail: detail || "Subscription usage is connected.",
     connectHint,

@@ -971,7 +971,7 @@ export function startUiServer(port: number, toolClient: ToolClient): Server {
         const hasExplicitLanguage = hasAnyQueryKey(url.searchParams, ["lang"]);
         const language: UiLanguage = hasExplicitLanguage ? resolvedLanguage : "zh";
         const compactStatusStrip = resolveCompactStatusStrip(url.searchParams, prefs.preferences.compactStatusStrip);
-        const usageView = resolveUsageView(url.searchParams);
+        const usageView = resolveUsageView(url.searchParams, section);
         const search = resolveDashboardSearchQuery(url.searchParams);
         const hasTaskFilterQuery = hasAnyQueryKey(url.searchParams, ["quick", "status", "owner", "project"]);
 
@@ -9139,9 +9139,11 @@ function resolveCompactStatusStrip(searchParams: URLSearchParams, fallback: bool
   return fallback;
 }
 
-function resolveUsageView(searchParams: URLSearchParams): UsageView {
+function resolveUsageView(searchParams: URLSearchParams, section: string): UsageView {
   const usageView = normalizeQueryString(searchParams.get("usage_view"), "usage_view", 16, false);
-  return usageView === "today" ? "today" : "cumulative";
+  if (usageView === "today") return "today";
+  if (usageView === "cumulative") return "cumulative";
+  return section === "usage-cost" ? "today" : "cumulative";
 }
 
 function resolveUiLanguage(searchParams: URLSearchParams, fallback: UiLanguage): UiLanguage {
@@ -14396,6 +14398,7 @@ function renderSingleSubscriptionStatusCard(
   const cycleStart = subscription.cycleStart?.trim() ? subscription.cycleStart.trim() : pickUiText(language, "Not provided", "未提供");
   const cycleEnd = subscription.cycleEnd?.trim() ? subscription.cycleEnd.trim() : pickUiText(language, "Not provided", "未提供");
   const usagePercent = typeof subscription.usagePercent === "number" ? `${subscription.usagePercent.toFixed(1)}%` : pickUiText(language, "Not provided", "未提供");
+  const resetIn = subscription.resetIn?.trim() ? subscription.resetIn.trim() : "";
 
   return `<div class="subscription-pill">
     <div><strong>${escapeHtml(subscription.planLabel)}</strong> ${badge(subscription.status, statusLabel)}</div>
@@ -14406,6 +14409,7 @@ function renderSingleSubscriptionStatusCard(
       pickUiText(language, "Usage", "使用率"),
     )}：${escapeHtml(usagePercent)}</div>
     <div class="meta">${escapeHtml(pickUiText(language, "Cycle", "周期"))}：${escapeHtml(cycleStart)} → ${escapeHtml(cycleEnd)}</div>
+    ${resetIn ? `<div class="meta">${escapeHtml(pickUiText(language, "Resets in", "重置于"))}：${escapeHtml(resetIn)}</div>` : ""}
   </div>`;
 }
 
